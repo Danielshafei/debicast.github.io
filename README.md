@@ -14,7 +14,7 @@ A web-based tool for petroleum engineers to perform decline curve analysis on pr
 
 ## How to Use
 
-1. Visit [https://debicast.github.io](https://debicast.github.io) to access the tool
+1. Visit (https://danielshafei.github.io/debicast.github.io/) to access the tool
 2. Enter decline curve parameters (qi, di, b)
 3. Import your production data in time,rate format
 4. Analyze the results and interact with the chart
