@@ -4,13 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Decline Curve Analysis - Petroleum Engineering Tool</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Load dependencies in correct order -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- Custom styles -->
     <style>
         .chart-container {
             touch-action: pan-y;
@@ -21,7 +25,6 @@
             outline: none;
         }
         
-        /* Prevent text selection during chart interaction */
         .no-select {
             -webkit-user-select: none;
             -moz-user-select: none;
@@ -29,7 +32,6 @@
             user-select: none;
         }
         
-        /* Custom scrollbar for data display */
         .custom-scrollbar::-webkit-scrollbar {
             width: 4px;
         }
@@ -47,12 +49,84 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        /* Loading spinner */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 18px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error message */
+        .error {
+            background-color: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
+    <!-- Loading indicator -->
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        Loading Decline Curve Analysis Tool...
+    </div>
+
+    <!-- Error container -->
+    <div id="error" style="display: none;"></div>
+
+    <!-- Main app container -->
     <div id="root"></div>
 
     <script type="text/babel">
+        // Error handling
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('Error: ', msg, url, lineNo, columnNo, error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').innerHTML = `
+                <div class="error">
+                    <h2>Error Loading Application</h2>
+                    <p><strong>Error:</strong> ${msg}</p>
+                    <p><strong>Line:</strong> ${lineNo}</p>
+                    <p>Please refresh the page or check your internet connection.</p>
+                </div>
+            `;
+            return true;
+        };
+
+        // Check if required libraries are loaded
+        if (typeof React === 'undefined') {
+            throw new Error('React library failed to load');
+        }
+        if (typeof ReactDOM === 'undefined') {
+            throw new Error('ReactDOM library failed to load');
+        }
+        if (typeof Recharts === 'undefined') {
+            throw new Error('Recharts library failed to load');
+        }
+
         const { useState, useEffect, useRef } = React;
         const { 
             LineChart, 
@@ -217,7 +291,7 @@
             return <div className="mt-4">{children}</div>;
         };
 
-        // Icon components
+        // Simple SVG Icons
         const TrendingDown = ({ className = "", size = 24 }) => (
             <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
@@ -294,7 +368,7 @@
                 left: "dataMin",
                 right: "dataMax",
                 top: "dataMax+10%",
-                bottom: 0, // Ensure minimum is always 0
+                bottom: 0,
             });
 
             const [isZooming, setIsZooming] = useState(false);
@@ -339,31 +413,6 @@
                     parsedDate = new Date(timeStr);
                     if (isNaN(parsedDate.getTime())) {
                         parsedDate = null;
-                    }
-                }
-
-                if (!parsedDate) {
-                    const dateFormats = [
-                        /^(\d{4})-(\d{1,2})$/,
-                        /^(\d{1,2})\/(\d{4})$/,
-                        /^(\d{4})\/(\d{1,2})$/,
-                        /^(\d{1,2})-(\d{4})$/,
-                    ];
-
-                    for (const format of dateFormats) {
-                        const match = timeStr.match(format);
-                        if (match) {
-                            let year, month;
-                            if (format.source.includes("(\\d{4})")) {
-                                year = parseInt(match[1]);
-                                month = parseInt(match[2]) - 1;
-                            } else {
-                                month = parseInt(match[1]) - 1;
-                                year = parseInt(match[2]);
-                            }
-                            parsedDate = new Date(year, month, 1);
-                            break;
-                        }
                     }
                 }
 
@@ -413,37 +462,6 @@
                     year: "numeric",
                     month: "short",
                 });
-            };
-
-            // Convert time units
-            const convertTimeUnit = (value, fromUnit, toUnit) => {
-                if (fromUnit === toUnit) return value;
-
-                let days;
-                switch (fromUnit) {
-                    case "days":
-                        days = value;
-                        break;
-                    case "months":
-                        days = value * 30.44;
-                        break;
-                    case "years":
-                        days = value * 365.25;
-                        break;
-                    default:
-                        days = value * 30.44;
-                }
-
-                switch (toUnit) {
-                    case "days":
-                        return days;
-                    case "months":
-                        return days / 30.44;
-                    case "years":
-                        return days / 365.25;
-                    default:
-                        return days / 30.44;
-                }
             };
 
             // Calculate decline curves
@@ -502,78 +520,7 @@
                 setData(newData);
             }, [parameters, timeRange, actualData, baseDate]);
 
-            // Update actual data when time unit changes
-            useEffect(() => {
-                if (actualData.length > 0 && baseDate) {
-                    const updatedData = actualData.map((point) => ({
-                        ...point,
-                        time: point.date ? calculateRelativeTime(point.date, baseDate) : point.time,
-                    }));
-                    setActualData(updatedData);
-                }
-            }, [parameters.timeUnit, baseDate]);
-
-            // Chart zoom functions with minimum value enforcement
-            const getAxisYDomain = (from, to, ref, offset) => {
-                const refData = data.slice(from - 1, to);
-                if (refData.length === 0) return [0, 100];
-
-                let [bottom, top] = [
-                    refData[0][ref],
-                    refData[0][ref],
-                ];
-
-                refData.forEach((d) => {
-                    const value = d[ref];
-                    if (value !== undefined && value !== null) {
-                        if (value > top) top = value;
-                        if (value < bottom) bottom = value;
-                    }
-                });
-
-                // Ensure bottom is never less than 0
-                return [Math.max(0, (bottom | 0) - offset), (top | 0) + offset];
-            };
-
-            const zoom = () => {
-                let { refAreaLeft, refAreaRight } = zoomState;
-
-                if (refAreaLeft === refAreaRight || refAreaRight === "") {
-                    setZoomState((prev) => ({
-                        ...prev,
-                        refAreaLeft: "",
-                        refAreaRight: "",
-                    }));
-                    return;
-                }
-
-                if (Number(refAreaLeft) > Number(refAreaRight)) {
-                    [refAreaLeft, refAreaRight] = [refAreaRight, refAreaLeft];
-                }
-
-                const fromIndex = data.findIndex((d) => d.time >= Number(refAreaLeft));
-                const toIndex = data.findIndex((d) => d.time >= Number(refAreaRight));
-
-                let [bottom, top] = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-
-                for (const curve of ["exponential", "hyperbolic", "harmonic", "actual"]) {
-                    if (visibleCurves[curve]) {
-                        const [curveBottom, curveTop] = getAxisYDomain(fromIndex, toIndex !== -1 ? toIndex : data.length - 1, curve, 50);
-                        if (curveBottom < bottom) bottom = curveBottom;
-                        if (curveTop > top) top = curveTop;
-                    }
-                }
-
-                setZoomState({
-                    refAreaLeft: "",
-                    refAreaRight: "",
-                    left: refAreaLeft,
-                    right: refAreaRight,
-                    bottom: Math.max(0, bottom), // Ensure minimum is 0
-                    top,
-                });
-            };
-
+            // Reset zoom function
             const resetZoom = () => {
                 setZoomState({
                     refAreaLeft: "",
@@ -581,80 +528,9 @@
                     left: "dataMin",
                     right: "dataMax",
                     top: "dataMax+10%",
-                    bottom: 0, // Always start from 0
+                    bottom: 0,
                 });
             };
-
-            // Chart event handlers
-            const handleMouseDown = (e) => {
-                if (!e || !e.activeLabel) return;
-                setIsZooming(true);
-                setZoomState((prev) => ({
-                    ...prev,
-                    refAreaLeft: e.activeLabel,
-                }));
-            };
-
-            const handleMouseMove = (e) => {
-                if (!e || !e.activeLabel || !isZooming) return;
-                setZoomState((prev) => ({
-                    ...prev,
-                    refAreaRight: e.activeLabel,
-                }));
-            };
-
-            const handleMouseUp = () => {
-                if (isZooming && zoomState.refAreaLeft && zoomState.refAreaRight) {
-                    zoom();
-                }
-                setIsZooming(false);
-            };
-
-            const handleMouseLeave = () => {
-                setIsZooming(false);
-                setZoomState((prev) => ({
-                    ...prev,
-                    refAreaLeft: "",
-                    refAreaRight: "",
-                }));
-            };
-
-            // Prevent page zoom on chart wheel events
-            const handleWheel = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const delta = e.deltaY > 0 ? 1.1 : 0.9;
-                const currentLeft = typeof zoomState.left === "number" ? zoomState.left : 0;
-                const currentRight = typeof zoomState.right === "number" ? zoomState.right : timeRange;
-                const currentBottom = typeof zoomState.bottom === "number" ? zoomState.bottom : 0;
-                const currentTop = typeof zoomState.top === "number" ? zoomState.top : parameters.qi;
-
-                const centerX = (currentLeft + currentRight) / 2;
-                const centerY = (currentBottom + currentTop) / 2;
-                const rangeX = (currentRight - currentLeft) * delta;
-                const rangeY = (currentTop - currentBottom) * delta;
-
-                setZoomState({
-                    refAreaLeft: "",
-                    refAreaRight: "",
-                    left: Math.max(0, centerX - rangeX / 2),
-                    right: Math.min(timeRange, centerX + rangeX / 2),
-                    bottom: Math.max(0, centerY - rangeY / 2), // Ensure minimum is 0
-                    top: centerY + rangeY / 2,
-                });
-            };
-
-            // Add wheel event listener
-            useEffect(() => {
-                const chartContainer = chartRef.current;
-                if (chartContainer) {
-                    chartContainer.addEventListener("wheel", handleWheel, { passive: false });
-                    return () => {
-                        chartContainer.removeEventListener("wheel", handleWheel);
-                    };
-                }
-            }, [zoomState, timeRange, parameters.qi]);
 
             // Calculate cumulative production
             const calculateCumulative = (model) => {
@@ -722,7 +598,7 @@
                         const rate = parseFloat(rateStr);
 
                         if (isNaN(rate) || rate < 0) {
-                            continue; // Skip negative rates
+                            continue;
                         }
 
                         if (date && !firstDate) {
@@ -732,7 +608,7 @@
 
                         parsedData.push({
                             time: tempTime,
-                            rate: Math.max(0, rate), // Ensure rate is not negative
+                            rate: Math.max(0, rate),
                             originalTime: timeStr,
                             date,
                         });
@@ -766,6 +642,8 @@
                     if (maxTime > timeRange) {
                         setTimeRange(Math.ceil(maxTime * 1.2));
                     }
+
+                    alert(`Successfully imported ${parsedData.length} data points!`);
                 } catch (error) {
                     alert("Error importing data. Please check the format (time,rate).");
                     console.error(error);
@@ -773,20 +651,14 @@
             };
 
             const handleParameterChange = (key, value) => {
-                if (key === "timeUnit" && typeof value === "string") {
-                    const oldUnit = parameters.timeUnit;
-                    const newTimeRange = convertTimeUnit(timeRange, oldUnit, value);
-                    setTimeRange(Math.ceil(newTimeRange));
-                }
-
                 setParameters((prev) => ({
                     ...prev,
                     [key]:
                         typeof value === "string"
                             ? key === "timeUnit" || key === "productionUnit"
                                 ? value
-                                : Math.max(0, parseFloat(value) || 0) // Ensure no negative values
-                            : Math.max(0, value), // Ensure no negative values
+                                : Math.max(0, parseFloat(value) || 0)
+                            : Math.max(0, value),
                 }));
             };
 
@@ -795,66 +667,6 @@
                 if (b > 0 && b < 1) return "Hyperbolic";
                 if (b === 1) return "Harmonic";
                 return "Invalid (b > 1)";
-            };
-
-            const autoFitParameters = () => {
-                if (actualData.length < 3) {
-                    alert("Need at least 3 data points for curve fitting");
-                    return;
-                }
-
-                let bestFit = {
-                    qi: parameters.qi,
-                    di: parameters.di,
-                    b: parameters.b,
-                    error: Number.MAX_VALUE,
-                };
-
-                const initialQi = Math.max(0, actualData[0].rate);
-
-                const diValues = [0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
-                const bValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
-
-                for (const di of diValues) {
-                    for (const b of bValues) {
-                        let sumSquaredError = 0;
-
-                        for (const point of actualData) {
-                            let predicted;
-
-                            if (b === 0) {
-                                predicted = initialQi * Math.exp(-di * point.time);
-                            } else if (b === 1) {
-                                predicted = initialQi / (1 + di * point.time);
-                            } else {
-                                predicted = initialQi / Math.pow(1 + b * di * point.time, 1 / b);
-                            }
-
-                            predicted = Math.max(0, predicted); // Ensure predicted is not negative
-                            const error = point.rate - predicted;
-                            sumSquaredError += error * error;
-                        }
-
-                        if (sumSquaredError < bestFit.error) {
-                            bestFit = {
-                                qi: initialQi,
-                                di,
-                                b,
-                                error: sumSquaredError,
-                            };
-                        }
-                    }
-                }
-
-                setParameters({
-                    qi: bestFit.qi,
-                    di: bestFit.di,
-                    b: bestFit.b,
-                    timeUnit: parameters.timeUnit,
-                    productionUnit: parameters.productionUnit,
-                });
-
-                alert(`Best fit found: qi=${bestFit.qi.toFixed(2)}, di=${bestFit.di.toFixed(4)}, b=${bestFit.b.toFixed(2)}`);
             };
 
             // Custom tooltip
@@ -1025,15 +837,6 @@
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-                                        <Button
-                                            variant="outline"
-                                            onClick={autoFitParameters}
-                                            disabled={actualData.length < 3}
-                                            className="text-xs sm:text-sm flex-1 sm:flex-none"
-                                        >
-                                            <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1" size={16} />
-                                            Auto-fit
-                                        </Button>
                                         <Button onClick={handleDataImport} className="text-xs sm:text-sm flex-1 sm:flex-none">
                                             Import Data
                                         </Button>
@@ -1173,12 +976,12 @@
                                         </div>
 
                                         <div className="p-2 sm:p-3 bg-blue-50 rounded-md">
-                                            <h4 className="text-xs sm:text-sm font-medium text-blue-800 mb-1">Chart Controls</h4>
+                                            <h4 className="text-xs sm:text-sm font-medium text-blue-800 mb-1">Instructions</h4>
                                             <ul className="text-xs text-blue-700 space-y-1">
-                                                <li>• Drag to select zoom area</li>
-                                                <li>• Scroll/pinch to zoom in/out</li>
-                                                <li>• Touch and drag to pan</li>
-                                                <li>• Double-tap to reset zoom</li>
+                                                <li>• Enter your well parameters</li>
+                                                <li>• Import production data</li>
+                                                <li>• View decline curves</li>
+                                                <li>• Analyze results below</li>
                                             </ul>
                                         </div>
 
@@ -1202,19 +1005,13 @@
                                             Production Decline Curves
                                         </CardTitle>
                                         <CardDescription className="text-xs sm:text-sm">
-                                            Interactive chart - drag to zoom, scroll/pinch to zoom, touch to pan
+                                            Visualization of decline curve models and actual data
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         <div ref={chartRef} className="h-64 sm:h-80 md:h-96 chart-container no-select">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart
-                                                    data={transformForLogScale(data)}
-                                                    onMouseDown={handleMouseDown}
-                                                    onMouseMove={handleMouseMove}
-                                                    onMouseUp={handleMouseUp}
-                                                    onMouseLeave={handleMouseLeave}
-                                                >
+                                                <LineChart data={transformForLogScale(data)}>
                                                     <CartesianGrid strokeDasharray="3 3" />
                                                     <XAxis
                                                         dataKey="time"
@@ -1291,16 +1088,6 @@
                                                             connectNulls={connectActualData}
                                                         />
                                                     )}
-
-                                                    {zoomState.refAreaLeft && zoomState.refAreaRight && (
-                                                        <ReferenceArea
-                                                            x1={zoomState.refAreaLeft}
-                                                            x2={zoomState.refAreaRight}
-                                                            strokeOpacity={0.3}
-                                                            fill="#8884d8"
-                                                            fillOpacity={0.3}
-                                                        />
-                                                    )}
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </div>
@@ -1335,7 +1122,7 @@
                                                             bbl
                                                         </div>
                                                         <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.exponential.toFixed(2)}{" "}
+                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.exponential?.toFixed(2) || 0}{" "}
                                                             {parameters.productionUnit}
                                                         </div>
                                                     </div>
@@ -1360,7 +1147,7 @@
                                                             bbl
                                                         </div>
                                                         <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.hyperbolic.toFixed(2)}{" "}
+                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.hyperbolic?.toFixed(2) || 0}{" "}
                                                             {parameters.productionUnit}
                                                         </div>
                                                     </div>
@@ -1379,7 +1166,7 @@
                                                             bbl
                                                         </div>
                                                         <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.harmonic.toFixed(2)}{" "}
+                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.harmonic?.toFixed(2) || 0}{" "}
                                                             {parameters.productionUnit}
                                                         </div>
                                                     </div>
@@ -1457,8 +1244,23 @@
             );
         };
 
-        // Render the application
-        ReactDOM.render(<DeclineCurveAnalysis />, document.getElementById("root"));
+        // Hide loading and render the application
+        try {
+            document.getElementById('loading').style.display = 'none';
+            ReactDOM.render(<DeclineCurveAnalysis />, document.getElementById("root"));
+        } catch (error) {
+            console.error('Failed to render application:', error);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').innerHTML = `
+                <div class="error">
+                    <h2>Failed to Load Application</h2>
+                    <p>There was an error loading the Decline Curve Analysis tool.</p>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p>Please refresh the page and try again.</p>
+                </div>
+            `;
+        }
     </script>
 </body>
 </html>
