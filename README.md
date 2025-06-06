@@ -34,4 +34,4 @@ To make changes to the tool:
 
 ## License
 
-Daniel-Shafeizade@gmail.com
+Daniel.Shafeizade@gmail.com
