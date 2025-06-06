@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Decline Curve Analysis - Petroleum Engineering Tool</title>
     
-    <!-- Load dependencies in correct order -->
+    <!-- Load dependencies with fallbacks -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Chart.js instead of Recharts for better reliability -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,19 +18,9 @@
     <!-- Custom styles -->
     <style>
         .chart-container {
-            touch-action: pan-y;
-            user-select: none;
-        }
-        
-        .chart-container:focus {
-            outline: none;
-        }
-        
-        .no-select {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
+            position: relative;
+            height: 400px;
+            width: 100%;
         }
         
         .custom-scrollbar::-webkit-scrollbar {
@@ -45,12 +36,7 @@
             background: #888;
             border-radius: 2px;
         }
-        
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
 
-        /* Loading spinner */
         .loading {
             display: flex;
             justify-content: center;
@@ -75,13 +61,21 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Error message */
         .error {
             background-color: #fee;
             border: 1px solid #fcc;
             color: #c33;
             padding: 20px;
             margin: 20px;
+            border-radius: 5px;
+        }
+
+        .success {
+            background-color: #efe;
+            border: 1px solid #cfc;
+            color: #363;
+            padding: 10px;
+            margin: 10px 0;
             border-radius: 5px;
         }
     </style>
@@ -99,1168 +93,1374 @@
     <!-- Main app container -->
     <div id="root"></div>
 
-    <script type="text/babel">
-        // Error handling
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Error: ', msg, url, lineNo, columnNo, error);
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error').style.display = 'block';
-            document.getElementById('error').innerHTML = `
-                <div class="error">
-                    <h2>Error Loading Application</h2>
-                    <p><strong>Error:</strong> ${msg}</p>
-                    <p><strong>Line:</strong> ${lineNo}</p>
-                    <p>Please refresh the page or check your internet connection.</p>
-                </div>
-            `;
-            return true;
-        };
-
+    <script>
         // Check if required libraries are loaded
-        if (typeof React === 'undefined') {
-            throw new Error('React library failed to load');
-        }
-        if (typeof ReactDOM === 'undefined') {
-            throw new Error('ReactDOM library failed to load');
-        }
-        if (typeof Recharts === 'undefined') {
-            throw new Error('Recharts library failed to load');
-        }
-
-        const { useState, useEffect, useRef } = React;
-        const { 
-            LineChart, 
-            Line, 
-            XAxis, 
-            YAxis, 
-            CartesianGrid, 
-            Tooltip, 
-            Legend, 
-            ResponsiveContainer,
-            ReferenceArea 
-        } = Recharts;
-
-        // Utility function for class names
-        const cn = (...classes) => classes.filter(Boolean).join(' ');
-
-        // UI Components
-        const Card = ({ children, className = "" }) => (
-            <div className={cn("bg-white rounded-lg border border-gray-200 shadow-sm", className)}>
-                {children}
-            </div>
-        );
-
-        const CardHeader = ({ children, className = "" }) => (
-            <div className={cn("p-4 sm:p-6", className)}>
-                {children}
-            </div>
-        );
-
-        const CardTitle = ({ children, className = "" }) => (
-            <h3 className={cn("text-lg font-semibold leading-none tracking-tight", className)}>
-                {children}
-            </h3>
-        );
-
-        const CardDescription = ({ children, className = "" }) => (
-            <p className={cn("text-sm text-gray-600 mt-1", className)}>
-                {children}
-            </p>
-        );
-
-        const CardContent = ({ children, className = "" }) => (
-            <div className={cn("p-4 sm:p-6 pt-0", className)}>
-                {children}
-            </div>
-        );
-
-        const Input = ({ className = "", ...props }) => (
-            <input
-                className={cn(
-                    "flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50",
-                    className
-                )}
-                {...props}
-            />
-        );
-
-        const Label = ({ children, className = "", ...props }) => (
-            <label className={cn("text-sm font-medium leading-none", className)} {...props}>
-                {children}
-            </label>
-        );
-
-        const Button = ({ children, variant = "default", size = "default", className = "", ...props }) => {
-            const baseClasses = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
-            const variants = {
-                default: "bg-blue-600 text-white hover:bg-blue-700",
-                outline: "border border-gray-300 bg-white hover:bg-gray-50"
-            };
-            const sizes = {
-                default: "h-10 py-2 px-4",
-                sm: "h-9 px-3"
-            };
+        function checkLibraries() {
+            const errors = [];
             
-            return (
-                <button
-                    className={cn(baseClasses, variants[variant], sizes[size], className)}
-                    {...props}
-                >
-                    {children}
-                </button>
-            );
-        };
+            if (typeof React === 'undefined') {
+                errors.push('React library failed to load');
+            }
+            if (typeof ReactDOM === 'undefined') {
+                errors.push('ReactDOM library failed to load');
+            }
+            if (typeof Chart === 'undefined') {
+                errors.push('Chart.js library failed to load');
+            }
+            
+            return errors;
+        }
 
-        const Select = ({ children, value, onValueChange, className = "" }) => {
-            return (
-                <select
-                    value={value}
-                    onChange={(e) => onValueChange(e.target.value)}
-                    className={cn(
+        // Wait for libraries to load
+        function waitForLibraries(callback, maxAttempts = 10) {
+            let attempts = 0;
+            
+            function check() {
+                attempts++;
+                const errors = checkLibraries();
+                
+                if (errors.length === 0) {
+                    callback();
+                } else if (attempts >= maxAttempts) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error').innerHTML = `
+                        <div class="error">
+                            <h2>Error Loading Required Libraries</h2>
+                            <ul>
+                                ${errors.map(error => `<li>${error}</li>`).join('')}
+                            </ul>
+                            <p>Please check your internet connection and refresh the page.</p>
+                            <button onclick="location.reload()" style="background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                                Refresh Page
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    setTimeout(check, 500);
+                }
+            }
+            
+            check();
+        }
+
+        // Initialize app when libraries are ready
+        waitForLibraries(function() {
+            const { useState, useEffect, useRef } = React;
+
+            // Utility function for class names
+            const cn = (...classes) => classes.filter(Boolean).join(' ');
+
+            // UI Components
+            const Card = ({ children, className = "" }) => (
+                React.createElement('div', { 
+                    className: cn("bg-white rounded-lg border border-gray-200 shadow-sm", className) 
+                }, children)
+            );
+
+            const CardHeader = ({ children, className = "" }) => (
+                React.createElement('div', { 
+                    className: cn("p-4 sm:p-6", className) 
+                }, children)
+            );
+
+            const CardTitle = ({ children, className = "" }) => (
+                React.createElement('h3', { 
+                    className: cn("text-lg font-semibold leading-none tracking-tight", className) 
+                }, children)
+            );
+
+            const CardDescription = ({ children, className = "" }) => (
+                React.createElement('p', { 
+                    className: cn("text-sm text-gray-600 mt-1", className) 
+                }, children)
+            );
+
+            const CardContent = ({ children, className = "" }) => (
+                React.createElement('div', { 
+                    className: cn("p-4 sm:p-6 pt-0", className) 
+                }, children)
+            );
+
+            const Input = ({ className = "", ...props }) => (
+                React.createElement('input', {
+                    className: cn(
+                        "flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50",
+                        className
+                    ),
+                    ...props
+                })
+            );
+
+            const Label = ({ children, className = "", ...props }) => (
+                React.createElement('label', { 
+                    className: cn("text-sm font-medium leading-none", className), 
+                    ...props 
+                }, children)
+            );
+
+            const Button = ({ children, variant = "default", size = "default", className = "", ...props }) => {
+                const baseClasses = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+                const variants = {
+                    default: "bg-blue-600 text-white hover:bg-blue-700",
+                    outline: "border border-gray-300 bg-white hover:bg-gray-50"
+                };
+                const sizes = {
+                    default: "h-10 py-2 px-4",
+                    sm: "h-9 px-3"
+                };
+                
+                return React.createElement('button', {
+                    className: cn(baseClasses, variants[variant], sizes[size], className),
+                    ...props
+                }, children);
+            };
+
+            const Select = ({ children, value, onValueChange, className = "" }) => {
+                return React.createElement('select', {
+                    value: value,
+                    onChange: (e) => onValueChange(e.target.value),
+                    className: cn(
                         "flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                         className
-                    )}
-                >
-                    {children}
-                </select>
-            );
-        };
-
-        const SelectItem = ({ children, value }) => (
-            <option value={value}>{children}</option>
-        );
-
-        const Checkbox = ({ checked, onCheckedChange, id, disabled = false }) => (
-            <input
-                type="checkbox"
-                id={id}
-                checked={checked}
-                onChange={(e) => onCheckedChange(e.target.checked)}
-                disabled={disabled}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-            />
-        );
-
-        const Badge = ({ children, variant = "default", className = "" }) => {
-            const variants = {
-                default: "bg-blue-100 text-blue-800",
-                outline: "border border-gray-300 text-gray-700"
+                    )
+                }, children);
             };
-            
-            return (
-                <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", variants[variant], className)}>
-                    {children}
-                </span>
-            );
-        };
 
-        const Tabs = ({ children, defaultValue, className = "" }) => {
-            const [activeTab, setActiveTab] = useState(defaultValue);
-            
-            return (
-                <div className={cn("w-full", className)}>
-                    {React.Children.map(children, child =>
-                        React.cloneElement(child, { activeTab, setActiveTab })
-                    )}
-                </div>
+            const SelectItem = ({ children, value }) => (
+                React.createElement('option', { value: value }, children)
             );
-        };
 
-        const TabsList = ({ children, activeTab, setActiveTab }) => (
-            <div className="inline-flex h-10 items-center justify-center rounded-md bg-gray-100 p-1 w-full">
-                {React.Children.map(children, child =>
+            const Checkbox = ({ checked, onCheckedChange, id, disabled = false }) => (
+                React.createElement('input', {
+                    type: "checkbox",
+                    id: id,
+                    checked: checked,
+                    onChange: (e) => onCheckedChange(e.target.checked),
+                    disabled: disabled,
+                    className: "h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                })
+            );
+
+            const Badge = ({ children, variant = "default", className = "" }) => {
+                const variants = {
+                    default: "bg-blue-100 text-blue-800",
+                    outline: "border border-gray-300 text-gray-700"
+                };
+                
+                return React.createElement('span', { 
+                    className: cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", variants[variant], className) 
+                }, children);
+            };
+
+            const Tabs = ({ children, defaultValue, className = "" }) => {
+                const [activeTab, setActiveTab] = useState(defaultValue);
+                
+                return React.createElement('div', { 
+                    className: cn("w-full", className) 
+                }, React.Children.map(children, child =>
                     React.cloneElement(child, { activeTab, setActiveTab })
-                )}
-            </div>
-        );
-
-        const TabsTrigger = ({ children, value, activeTab, setActiveTab }) => (
-            <button
-                className={cn(
-                    "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1",
-                    activeTab === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                )}
-                onClick={() => setActiveTab(value)}
-            >
-                {children}
-            </button>
-        );
-
-        const TabsContent = ({ children, value, activeTab }) => {
-            if (activeTab !== value) return null;
-            return <div className="mt-4">{children}</div>;
-        };
-
-        // Simple SVG Icons
-        const TrendingDown = ({ className = "", size = 24 }) => (
-            <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-                <polyline points="17 18 23 18 23 12"></polyline>
-            </svg>
-        );
-
-        const Calculator = ({ className = "", size = 24 }) => (
-            <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="2" width="16" height="20" rx="2"></rect>
-                <line x1="8" y1="6" x2="16" y2="6"></line>
-                <line x1="16" y1="14" x2="16" y2="18"></line>
-                <path d="m16 10 4 4-4 4"></path>
-                <line x1="8" y1="14" x2="12" y2="14"></line>
-                <line x1="8" y1="18" x2="12" y2="18"></line>
-            </svg>
-        );
-
-        const BarChart3 = ({ className = "", size = 24 }) => (
-            <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3v18h18"></path>
-                <path d="M18 17V9"></path>
-                <path d="M13 17V5"></path>
-                <path d="M8 17v-3"></path>
-            </svg>
-        );
-
-        const RefreshCw = ({ className = "", size = 24 }) => (
-            <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                <path d="M21 3v5h-5"></path>
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                <path d="M3 21v-5h5"></path>
-            </svg>
-        );
-
-        const ZoomOut = ({ className = "", size = 24 }) => (
-            <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="M21 21l-4.35-4.35"></path>
-                <line x1="8" y1="11" x2="14" y2="11"></line>
-            </svg>
-        );
-
-        // Main Application Component
-        const DeclineCurveAnalysis = () => {
-            const [parameters, setParameters] = useState({
-                qi: 5618.57,
-                di: 0.1,
-                b: 0.5,
-                timeUnit: "months",
-                productionUnit: "bbl/day",
-            });
-
-            const [timeRange, setTimeRange] = useState(60);
-            const [data, setData] = useState([]);
-            const [actualData, setActualData] = useState([]);
-            const [dataInput, setDataInput] = useState("");
-            const [baseDate, setBaseDate] = useState(null);
-
-            const [visibleCurves, setVisibleCurves] = useState({
-                exponential: true,
-                hyperbolic: true,
-                harmonic: true,
-                actual: true,
-            });
-
-            const [useLogScale, setUseLogScale] = useState(false);
-            const [connectActualData, setConnectActualData] = useState(false);
-
-            const [zoomState, setZoomState] = useState({
-                refAreaLeft: "",
-                refAreaRight: "",
-                left: "dataMin",
-                right: "dataMax",
-                top: "dataMax+10%",
-                bottom: 0,
-            });
-
-            const [isZooming, setIsZooming] = useState(false);
-            const chartRef = useRef(null);
-
-            // Transform data for log scale
-            const transformForLogScale = (data) => {
-                if (!useLogScale) return data;
-
-                return data.map((point) => {
-                    const newPoint = { ...point };
-                    const minValue = 0.1;
-
-                    if (newPoint.exponential <= 0) newPoint.exponential = minValue;
-                    if (newPoint.hyperbolic <= 0) newPoint.hyperbolic = minValue;
-                    if (newPoint.harmonic <= 0) newPoint.harmonic = minValue;
-                    if (newPoint.actual !== undefined && newPoint.actual <= 0) newPoint.actual = minValue;
-
-                    return newPoint;
-                });
+                ));
             };
 
-            // Parse time values
-            const parseTimeValue = (timeStr) => {
-                timeStr = timeStr.trim();
-
-                if (!isNaN(Number(timeStr))) {
-                    return { time: Number(timeStr), date: null };
-                }
-
-                let parsedDate = null;
-
-                const mmddyyyyMatch = timeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                if (mmddyyyyMatch) {
-                    const month = parseInt(mmddyyyyMatch[1]) - 1;
-                    const day = parseInt(mmddyyyyMatch[2]);
-                    const year = parseInt(mmddyyyyMatch[3]);
-                    parsedDate = new Date(year, month, day);
-                }
-
-                if (!parsedDate) {
-                    parsedDate = new Date(timeStr);
-                    if (isNaN(parsedDate.getTime())) {
-                        parsedDate = null;
-                    }
-                }
-
-                if (parsedDate && !isNaN(parsedDate.getTime())) {
-                    return { time: 0, date: parsedDate };
-                }
-
-                return { time: 0, date: null };
-            };
-
-            // Calculate relative time
-            const calculateRelativeTime = (date, baseDate) => {
-                const diffTime = date.getTime() - baseDate.getTime();
-
-                switch (parameters.timeUnit) {
-                    case "days":
-                        return Math.max(0, diffTime / (1000 * 60 * 60 * 24));
-                    case "months":
-                        return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 30.44));
-                    case "years":
-                        return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 365.25));
-                    default:
-                        return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 30.44));
-                }
-            };
-
-            // Format date for display
-            const formatDateLabel = (time, baseDate) => {
-                if (!baseDate) return time.toFixed(1);
-
-                let targetDate;
-                switch (parameters.timeUnit) {
-                    case "days":
-                        targetDate = new Date(baseDate.getTime() + time * 24 * 60 * 60 * 1000);
-                        break;
-                    case "months":
-                        targetDate = new Date(baseDate.getTime() + time * 30.44 * 24 * 60 * 60 * 1000);
-                        break;
-                    case "years":
-                        targetDate = new Date(baseDate.getTime() + time * 365.25 * 24 * 60 * 60 * 1000);
-                        break;
-                    default:
-                        targetDate = new Date(baseDate.getTime() + time * 30.44 * 24 * 60 * 60 * 1000);
-                }
-
-                return targetDate.toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                });
-            };
-
-            // Calculate decline curves
-            useEffect(() => {
-                const newData = [];
-
-                let maxTime = timeRange;
-                if (actualData.length > 0) {
-                    const maxActualTime = Math.max(...actualData.map((d) => d.time));
-                    maxTime = Math.max(timeRange, maxActualTime * 1.2);
-                }
-
-                const timeStep = maxTime / 200;
-
-                for (let i = 0; i <= 200; i++) {
-                    const t = i * timeStep;
-
-                    const exponential = Math.max(0, parameters.qi * Math.exp(-parameters.di * t));
-                    const hyperbolic = Math.max(0, parameters.qi / Math.pow(1 + parameters.b * parameters.di * t, 1 / parameters.b));
-                    const harmonic = Math.max(0, parameters.qi / (1 + parameters.di * t));
-
-                    newData.push({
-                        time: t,
-                        exponential,
-                        hyperbolic,
-                        harmonic,
-                        dateLabel: formatDateLabel(t, baseDate),
-                    });
-                }
-
-                actualData.forEach((point) => {
-                    const existingIndex = newData.findIndex((d) => Math.abs(d.time - point.time) < 0.01);
-
-                    if (existingIndex !== -1) {
-                        newData[existingIndex].actual = Math.max(0, point.rate);
-                    } else {
-                        const insertIndex = newData.findIndex((d) => d.time > point.time);
-                        const newPoint = {
-                            time: point.time,
-                            exponential: Math.max(0, parameters.qi * Math.exp(-parameters.di * point.time)),
-                            hyperbolic: Math.max(0, parameters.qi / Math.pow(1 + parameters.b * parameters.di * point.time, 1 / parameters.b)),
-                            harmonic: Math.max(0, parameters.qi / (1 + parameters.di * point.time)),
-                            actual: Math.max(0, point.rate),
-                            dateLabel: formatDateLabel(point.time, baseDate),
-                        };
-
-                        if (insertIndex === -1) {
-                            newData.push(newPoint);
-                        } else {
-                            newData.splice(insertIndex, 0, newPoint);
-                        }
-                    }
-                });
-
-                newData.sort((a, b) => a.time - b.time);
-                setData(newData);
-            }, [parameters, timeRange, actualData, baseDate]);
-
-            // Reset zoom function
-            const resetZoom = () => {
-                setZoomState({
-                    refAreaLeft: "",
-                    refAreaRight: "",
-                    left: "dataMin",
-                    right: "dataMax",
-                    top: "dataMax+10%",
-                    bottom: 0,
-                });
-            };
-
-            // Calculate cumulative production
-            const calculateCumulative = (model) => {
-                const { qi, di, b } = parameters;
-                const t = timeRange;
-
-                switch (model) {
-                    case "exponential":
-                        return Math.max(0, (qi / di) * (1 - Math.exp(-di * t)));
-                    case "hyperbolic":
-                        if (b === 1) {
-                            return Math.max(0, (qi / di) * Math.log(1 + di * t));
-                        } else {
-                            return Math.max(0, (qi / ((1 - b) * di)) * (1 - Math.pow(1 + b * di * t, (1 - b) / b)));
-                        }
-                    case "harmonic":
-                        return Math.max(0, (qi / di) * Math.log(1 + di * t));
-                    default:
-                        return 0;
-                }
-            };
-
-            // Calculate EUR
-            const calculateEUR = (model) => {
-                const { qi, di, b } = parameters;
-
-                switch (model) {
-                    case "exponential":
-                        return Math.max(0, qi / di);
-                    case "hyperbolic":
-                        if (b >= 1) return Number.POSITIVE_INFINITY;
-                        return Math.max(0, qi / ((1 - b) * di));
-                    case "harmonic":
-                        return Number.POSITIVE_INFINITY;
-                    default:
-                        return 0;
-                }
-            };
-
-            const handleDataImport = () => {
-                try {
-                    const lines = dataInput
-                        .trim()
-                        .split("\n")
-                        .filter((line) => line.trim());
-
-                    if (lines.length === 0) {
-                        throw new Error("No data found");
-                    }
-
-                    const parsedData = [];
-                    let firstDate = null;
-
-                    for (const line of lines) {
-                        const parts = line.split(/[,\t\s]+/).filter((part) => part.trim());
-
-                        if (parts.length < 2) {
-                            continue;
-                        }
-
-                        const timeStr = parts[0].trim();
-                        const rateStr = parts[1].trim();
-
-                        const { time: tempTime, date } = parseTimeValue(timeStr);
-                        const rate = parseFloat(rateStr);
-
-                        if (isNaN(rate) || rate < 0) {
-                            continue;
-                        }
-
-                        if (date && !firstDate) {
-                            firstDate = date;
-                            setBaseDate(date);
-                        }
-
-                        parsedData.push({
-                            time: tempTime,
-                            rate: Math.max(0, rate),
-                            originalTime: timeStr,
-                            date,
-                        });
-                    }
-
-                    if (firstDate) {
-                        parsedData.forEach((point) => {
-                            if (point.date) {
-                                point.time = calculateRelativeTime(point.date, firstDate);
-                            }
-                        });
-                    }
-
-                    if (parsedData.length === 0) {
-                        throw new Error("No valid data found");
-                    }
-
-                    parsedData.sort((a, b) => a.time - b.time);
-
-                    setActualData(parsedData);
-                    setVisibleCurves((prev) => ({ ...prev, actual: true }));
-
-                    if (parsedData.length > 0) {
-                        setParameters((prev) => ({
-                            ...prev,
-                            qi: Math.max(0, parsedData[0].rate),
-                        }));
-                    }
-
-                    const maxTime = Math.max(...parsedData.map((d) => d.time));
-                    if (maxTime > timeRange) {
-                        setTimeRange(Math.ceil(maxTime * 1.2));
-                    }
-
-                    alert(`Successfully imported ${parsedData.length} data points!`);
-                } catch (error) {
-                    alert("Error importing data. Please check the format (time,rate).");
-                    console.error(error);
-                }
-            };
-
-            const handleParameterChange = (key, value) => {
-                setParameters((prev) => ({
-                    ...prev,
-                    [key]:
-                        typeof value === "string"
-                            ? key === "timeUnit" || key === "productionUnit"
-                                ? value
-                                : Math.max(0, parseFloat(value) || 0)
-                            : Math.max(0, value),
-                }));
-            };
-
-            const getDeclineType = (b) => {
-                if (b === 0) return "Exponential";
-                if (b > 0 && b < 1) return "Hyperbolic";
-                if (b === 1) return "Harmonic";
-                return "Invalid (b > 1)";
-            };
-
-            // Custom tooltip
-            const CustomTooltip = ({ active, payload, label }) => {
-                if (active && payload && payload.length) {
-                    const timeDisplay = baseDate ? formatDateLabel(label, baseDate) : `${label.toFixed(2)} ${parameters.timeUnit}`;
-
-                    return (
-                        <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
-                            <p className="font-medium">{`Time: ${timeDisplay}`}</p>
-                            {payload.map((entry, index) => (
-                                <p key={index} style={{ color: entry.color }}>
-                                    {`${entry.name}: ${entry.value.toFixed(2)} ${parameters.productionUnit}`}
-                                </p>
-                            ))}
-                        </div>
-                    );
-                }
-                return null;
-            };
-
-            // X-axis tick formatter
-            const formatXAxisTick = (value) => {
-                if (baseDate) {
-                    return formatDateLabel(value, baseDate);
-                }
-                return value.toFixed(0);
-            };
-
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
-                    <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-                        {/* Header */}
-                        <div className="text-center space-y-2">
-                            <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 flex items-center justify-center gap-2">
-                                <TrendingDown className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" size={32} />
-                                Decline Curve Analysis
-                            </h1>
-                            <p className="text-sm sm:text-lg text-gray-600">Petroleum Engineering Production Forecasting Tool</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-                            {/* Input Parameters */}
-                            <Card className="lg:col-span-1">
-                                <CardHeader className="pb-3 sm:pb-6">
-                                    <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                                        <Calculator className="h-4 w-4 sm:h-5 sm:w-5" size={20} />
-                                        Input Parameters
-                                    </CardTitle>
-                                    <CardDescription className="text-xs sm:text-sm">Configure the decline curve parameters</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-3 sm:space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="qi" className="text-xs sm:text-sm">
-                                            Initial Production Rate (qi)
-                                        </Label>
-                                        <Input
-                                            id="qi"
-                                            type="number"
-                                            min="0"
-                                            value={parameters.qi}
-                                            onChange={(e) => handleParameterChange("qi", e.target.value)}
-                                            placeholder="5618.57"
-                                            className="text-xs sm:text-sm"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="di" className="text-xs sm:text-sm">
-                                            Initial Decline Rate (di)
-                                        </Label>
-                                        <Input
-                                            id="di"
-                                            type="number"
-                                            min="0"
-                                            step="0.001"
-                                            value={parameters.di}
-                                            onChange={(e) => handleParameterChange("di", e.target.value)}
-                                            placeholder="0.1"
-                                            className="text-xs sm:text-sm"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="b" className="text-xs sm:text-sm">
-                                            Decline Exponent (b)
-                                        </Label>
-                                        <Input
-                                            id="b"
-                                            type="number"
-                                            min="0"
-                                            step="0.1"
-                                            value={parameters.b}
-                                            onChange={(e) => handleParameterChange("b", e.target.value)}
-                                            placeholder="0.5"
-                                            className="text-xs sm:text-sm"
-                                        />
-                                        <Badge variant="outline" className="text-xs">
-                                            {getDeclineType(parameters.b)}
-                                        </Badge>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="timeRange" className="text-xs sm:text-sm">
-                                            Time Range
-                                        </Label>
-                                        <Input
-                                            id="timeRange"
-                                            type="number"
-                                            min="1"
-                                            value={timeRange}
-                                            onChange={(e) => setTimeRange(Math.max(1, parseInt(e.target.value) || 60))}
-                                            placeholder="60"
-                                            className="text-xs sm:text-sm"
-                                        />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* Data Input */}
-                            <Card className="lg:col-span-1">
-                                <CardHeader className="pb-3 sm:pb-6">
-                                    <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                                        <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" size={20} />
-                                        Production Data
-                                    </CardTitle>
-                                    <CardDescription className="text-xs sm:text-sm">Import your actual production data</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-3 sm:space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="dataInput" className="text-xs sm:text-sm">
-                                            Paste Data (time,rate format)
-                                        </Label>
-                                        <textarea
-                                            id="dataInput"
-                                            className="w-full min-h-[80px] sm:min-h-[120px] p-2 border border-gray-300 rounded-md font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            placeholder="4/7/2011,5618.57&#10;5/11/2011,5540.51&#10;6/13/2011,5077.47&#10;or&#10;0,1000&#10;1,950&#10;2,903"
-                                            value={dataInput}
-                                            onChange={(e) => setDataInput(e.target.value)}
-                                        />
-                                        <div className="text-xs text-gray-500">Supports: MM/DD/YYYY,rate or time,rate format</div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs sm:text-sm">Time Unit</Label>
-                                            <Select
-                                                value={parameters.timeUnit}
-                                                onValueChange={(value) => handleParameterChange("timeUnit", value)}
-                                            >
-                                                <SelectItem value="days">Days</SelectItem>
-                                                <SelectItem value="months">Months</SelectItem>
-                                                <SelectItem value="years">Years</SelectItem>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label className="text-xs sm:text-sm">Production Unit</Label>
-                                            <Select
-                                                value={parameters.productionUnit}
-                                                onValueChange={(value) => handleParameterChange("productionUnit", value)}
-                                            >
-                                                <SelectItem value="bbl/day">bbl/day</SelectItem>
-                                                <SelectItem value="Mcf/day">Mcf/day</SelectItem>
-                                                <SelectItem value="m³/day">m³/day</SelectItem>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-                                        <Button onClick={handleDataImport} className="text-xs sm:text-sm flex-1 sm:flex-none">
-                                            Import Data
-                                        </Button>
-                                    </div>
-
-                                    {actualData.length > 0 && (
-                                        <div className="mt-4">
-                                            <div className="text-xs sm:text-sm font-medium">Imported {actualData.length} data points</div>
-                                            <div className="max-h-[100px] sm:max-h-[150px] overflow-y-auto mt-2 custom-scrollbar">
-                                                <table className="w-full text-xs">
-                                                    <thead>
-                                                        <tr className="border-b">
-                                                            <th className="text-left p-1">Time</th>
-                                                            <th className="text-left p-1">Rate</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {actualData.slice(0, 10).map((point, i) => (
-                                                            <tr key={i} className="border-b border-gray-100">
-                                                                <td className="p-1">{point.originalTime || point.time.toFixed(2)}</td>
-                                                                <td className="p-1">{point.rate.toFixed(2)}</td>
-                                                            </tr>
-                                                        ))}
-                                                        {actualData.length > 10 && (
-                                                            <tr>
-                                                                <td colSpan={2} className="text-center p-1 text-gray-500">
-                                                                    + {actualData.length - 10} more points
-                                                                </td>
-                                                            </tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* Chart Display */}
-                            <Card className="lg:col-span-1">
-                                <CardHeader className="pb-3 sm:pb-6">
-                                    <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                                        <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" size={20} />
-                                        Chart Display
-                                    </CardTitle>
-                                    <CardDescription className="text-xs sm:text-sm">
-                                        Control chart appearance and interactions
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-3 sm:space-y-4">
-                                        <div>
-                                            <h4 className="text-xs sm:text-sm font-medium mb-2">Visible Curves</h4>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="show-exponential"
-                                                        checked={visibleCurves.exponential}
-                                                        onCheckedChange={(checked) => setVisibleCurves((prev) => ({ ...prev, exponential: !!checked }))}
-                                                    />
-                                                    <Label htmlFor="show-exponential" className="text-xs sm:text-sm text-red-600">
-                                                        Exponential
-                                                    </Label>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="show-hyperbolic"
-                                                        checked={visibleCurves.hyperbolic}
-                                                        onCheckedChange={(checked) => setVisibleCurves((prev) => ({ ...prev, hyperbolic: !!checked }))}
-                                                    />
-                                                    <Label htmlFor="show-hyperbolic" className="text-xs sm:text-sm text-blue-600">
-                                                        Hyperbolic
-                                                    </Label>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="show-harmonic"
-                                                        checked={visibleCurves.harmonic}
-                                                        onCheckedChange={(checked) => setVisibleCurves((prev) => ({ ...prev, harmonic: !!checked }))}
-                                                    />
-                                                    <Label htmlFor="show-harmonic" className="text-xs sm:text-sm text-green-600">
-                                                        Harmonic
-                                                    </Label>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="show-actual"
-                                                        checked={visibleCurves.actual}
-                                                        onCheckedChange={(checked) => setVisibleCurves((prev) => ({ ...prev, actual: !!checked }))}
-                                                        disabled={actualData.length === 0}
-                                                    />
-                                                    <Label
-                                                        htmlFor="show-actual"
-                                                        className={`text-xs sm:text-sm ${actualData.length === 0 ? "text-gray-400" : "text-purple-600"}`}
-                                                    >
-                                                        Actual Data
-                                                    </Label>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="text-xs sm:text-sm font-medium mb-2">Chart Options</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="use-log-scale"
-                                                        checked={useLogScale}
-                                                        onCheckedChange={(checked) => setUseLogScale(!!checked)}
-                                                    />
-                                                    <Label htmlFor="use-log-scale" className="text-xs sm:text-sm">
-                                                        Logarithmic scale (semi-log)
-                                                    </Label>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id="connect-actual-data"
-                                                        checked={connectActualData}
-                                                        onCheckedChange={(checked) => setConnectActualData(!!checked)}
-                                                        disabled={actualData.length === 0}
-                                                    />
-                                                    <Label
-                                                        htmlFor="connect-actual-data"
-                                                        className={`text-xs sm:text-sm ${actualData.length === 0 ? "text-gray-400" : ""}`}
-                                                    >
-                                                        Connect actual data points
-                                                    </Label>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button variant="outline" size="sm" onClick={resetZoom} className="text-xs flex-1 sm:flex-none">
-                                                <ZoomOut className="h-3 w-3 sm:h-4 sm:w-4 mr-1" size={16} />
-                                                Reset Zoom
-                                            </Button>
-                                        </div>
-
-                                        <div className="p-2 sm:p-3 bg-blue-50 rounded-md">
-                                            <h4 className="text-xs sm:text-sm font-medium text-blue-800 mb-1">Instructions</h4>
-                                            <ul className="text-xs text-blue-700 space-y-1">
-                                                <li>• Enter your well parameters</li>
-                                                <li>• Import production data</li>
-                                                <li>• View decline curves</li>
-                                                <li>• Analyze results below</li>
-                                            </ul>
-                                        </div>
-
-                                        {baseDate && (
-                                            <div className="p-2 sm:p-3 bg-green-50 rounded-md">
-                                                <h4 className="text-xs sm:text-sm font-medium text-green-800 mb-1">Date Range</h4>
-                                                <p className="text-xs text-green-700">Base: {baseDate.toLocaleDateString()}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* Charts and Results */}
-                            <div className="lg:col-span-3 space-y-4 sm:space-y-6">
-                                {/* Production Chart */}
-                                <Card>
-                                    <CardHeader className="pb-3 sm:pb-6">
-                                        <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                                            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" size={20} />
-                                            Production Decline Curves
-                                        </CardTitle>
-                                        <CardDescription className="text-xs sm:text-sm">
-                                            Visualization of decline curve models and actual data
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div ref={chartRef} className="h-64 sm:h-80 md:h-96 chart-container no-select">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={transformForLogScale(data)}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis
-                                                        dataKey="time"
-                                                        type="number"
-                                                        scale="linear"
-                                                        domain={[zoomState.left, zoomState.right]}
-                                                        label={{
-                                                            value: baseDate ? "Time" : `Time (${parameters.timeUnit})`,
-                                                            position: "insideBottom",
-                                                            offset: -10,
-                                                        }}
-                                                        tickFormatter={formatXAxisTick}
-                                                        interval="preserveStartEnd"
-                                                        allowDataOverflow
-                                                    />
-                                                    <YAxis
-                                                        scale={useLogScale ? "log" : "auto"}
-                                                        domain={[Math.max(0, zoomState.bottom), zoomState.top]}
-                                                        label={{
-                                                            value: `Production Rate (${parameters.productionUnit})`,
-                                                            angle: -90,
-                                                            position: "insideLeft",
-                                                        }}
-                                                        tickFormatter={(value) => Math.max(0, value).toLocaleString()}
-                                                        allowDataOverflow
-                                                    />
-                                                    <Tooltip content={<CustomTooltip />} />
-                                                    <Legend />
-
-                                                    {visibleCurves.exponential && (
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="exponential"
-                                                            stroke="#ef4444"
-                                                            strokeWidth={2}
-                                                            name="Exponential (b=0)"
-                                                            dot={false}
-                                                            connectNulls={false}
-                                                        />
-                                                    )}
-
-                                                    {visibleCurves.hyperbolic && (
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="hyperbolic"
-                                                            stroke="#3b82f6"
-                                                            strokeWidth={2}
-                                                            name={`Hyperbolic (b=${parameters.b})`}
-                                                            dot={false}
-                                                            connectNulls={false}
-                                                        />
-                                                    )}
-
-                                                    {visibleCurves.harmonic && (
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="harmonic"
-                                                            stroke="#10b981"
-                                                            strokeWidth={2}
-                                                            name="Harmonic (b=1)"
-                                                            dot={false}
-                                                            connectNulls={false}
-                                                        />
-                                                    )}
-
-                                                    {visibleCurves.actual && actualData.length > 0 && (
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="actual"
-                                                            stroke="#9333ea"
-                                                            strokeWidth={3}
-                                                            name="Actual Data"
-                                                            dot={{ r: 4, fill: "#9333ea" }}
-                                                            connectNulls={connectActualData}
-                                                        />
-                                                    )}
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {/* Results */}
-                                <Tabs defaultValue="summary" className="w-full">
-                                    <TabsList>
-                                        <TabsTrigger value="summary" className="text-xs sm:text-sm">
-                                            Summary
-                                        </TabsTrigger>
-                                        <TabsTrigger value="cumulative" className="text-xs sm:text-sm">
-                                            Cumulative
-                                        </TabsTrigger>
-                                        <TabsTrigger value="equations" className="text-xs sm:text-sm">
-                                            Equations
-                                        </TabsTrigger>
-                                    </TabsList>
-
-                                    <TabsContent value="summary">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <Card>
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-xs sm:text-sm text-red-600">Exponential</CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="space-y-2 text-xs sm:text-sm">
-                                                        <div>EUR: {calculateEUR("exponential").toLocaleString()} bbl</div>
-                                                        <div>
-                                                            Cum @ {timeRange} {parameters.timeUnit}: {calculateCumulative("exponential").toLocaleString()}{" "}
-                                                            bbl
-                                                        </div>
-                                                        <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.exponential?.toFixed(2) || 0}{" "}
-                                                            {parameters.productionUnit}
-                                                        </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card>
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-xs sm:text-sm text-blue-600">Hyperbolic</CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="space-y-2 text-xs sm:text-sm">
-                                                        <div>
-                                                            EUR:{" "}
-                                                            {calculateEUR("hyperbolic") === Number.POSITIVE_INFINITY
-                                                                ? "∞"
-                                                                : calculateEUR("hyperbolic").toLocaleString()}{" "}
-                                                            bbl
-                                                        </div>
-                                                        <div>
-                                                            Cum @ {timeRange} {parameters.timeUnit}: {calculateCumulative("hyperbolic").toLocaleString()}{" "}
-                                                            bbl
-                                                        </div>
-                                                        <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.hyperbolic?.toFixed(2) || 0}{" "}
-                                                            {parameters.productionUnit}
-                                                        </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card>
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-xs sm:text-sm text-green-600">Harmonic</CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="space-y-2 text-xs sm:text-sm">
-                                                        <div>EUR: ∞ bbl</div>
-                                                        <div>
-                                                            Cum @ {timeRange} {parameters.timeUnit}: {calculateCumulative("harmonic").toLocaleString()}{" "}
-                                                            bbl
-                                                        </div>
-                                                        <div>
-                                                            Rate @ {timeRange} {parameters.timeUnit}: {data[data.length - 1]?.harmonic?.toFixed(2) || 0}{" "}
-                                                            {parameters.productionUnit}
-                                                        </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="cumulative">
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-sm sm:text-base">Cumulative Production Formulas</CardTitle>
-                                            </CardHeader>
-                                            <CardContent className="space-y-4">
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-red-600 text-xs sm:text-sm">Exponential Decline:</h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">
-                                                        Np(t) = (qi / di) × [1 - exp(-di × t)]
-                                                    </p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-blue-600 text-xs sm:text-sm">Hyperbolic Decline:</h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">
-                                                        Np(t) = qi / [(1-b) × di] × [1 - (1 + b × di × t)^((1-b)/b)]
-                                                    </p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-green-600 text-xs sm:text-sm">Harmonic Decline:</h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">
-                                                        Np(t) = (qi / di) × ln(1 + di × t)
-                                                    </p>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </TabsContent>
-
-                                    <TabsContent value="equations">
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-sm sm:text-base">Decline Curve Equations</CardTitle>
-                                            </CardHeader>
-                                            <CardContent className="space-y-4">
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-red-600 text-xs sm:text-sm">Exponential Decline (b = 0):</h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">q(t) = qi × exp(-di × t)</p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-blue-600 text-xs sm:text-sm">
-                                                        Hyperbolic Decline (0 {"<"} b {"<"} 1):
-                                                    </h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">q(t) = qi / (1 + b × di × t)^(1/b)</p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-green-600 text-xs sm:text-sm">Harmonic Decline (b = 1):</h4>
-                                                    <p className="text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded">q(t) = qi / (1 + di × t)</p>
-                                                </div>
-                                                <div className="mt-4 p-3 sm:p-4 bg-blue-50 rounded-lg">
-                                                    <h4 className="font-semibold text-blue-800 mb-2 text-xs sm:text-sm">Where:</h4>
-                                                    <ul className="text-xs sm:text-sm space-y-1 text-blue-700">
-                                                        <li>• qi = Initial production rate</li>
-                                                        <li>• di = Initial decline rate</li>
-                                                        <li>• b = Decline exponent</li>
-                                                        <li>• t = Time</li>
-                                                        <li>• q(t) = Production rate at time t</li>
-                                                    </ul>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </TabsContent>
-                                </Tabs>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            const TabsList = ({ children, activeTab, setActiveTab }) => (
+                React.createElement('div', { 
+                    className: "inline-flex h-10 items-center justify-center rounded-md bg-gray-100 p-1 w-full" 
+                }, React.Children.map(children, child =>
+                    React.cloneElement(child, { activeTab, setActiveTab })
+                ))
             );
-        };
 
-        // Hide loading and render the application
-        try {
-            document.getElementById('loading').style.display = 'none';
-            ReactDOM.render(<DeclineCurveAnalysis />, document.getElementById("root"));
-        } catch (error) {
-            console.error('Failed to render application:', error);
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error').style.display = 'block';
-            document.getElementById('error').innerHTML = `
-                <div class="error">
-                    <h2>Failed to Load Application</h2>
-                    <p>There was an error loading the Decline Curve Analysis tool.</p>
-                    <p><strong>Error:</strong> ${error.message}</p>
-                    <p>Please refresh the page and try again.</p>
-                </div>
-            `;
-        }
+            const TabsTrigger = ({ children, value, activeTab, setActiveTab }) => (
+                React.createElement('button', {
+                    className: cn(
+                        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1",
+                        activeTab === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                    ),
+                    onClick: () => setActiveTab(value)
+                }, children)
+            );
+
+            const TabsContent = ({ children, value, activeTab }) => {
+                if (activeTab !== value) return null;
+                return React.createElement('div', { className: "mt-4" }, children);
+            };
+
+            // Simple SVG Icons
+            const TrendingDown = ({ className = "", size = 24 }) => (
+                React.createElement('svg', {
+                    className: className,
+                    width: size,
+                    height: size,
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    strokeWidth: "2",
+                    strokeLinecap: "round",
+                    strokeLinejoin: "round"
+                }, [
+                    React.createElement('polyline', { key: 1, points: "23 18 13.5 8.5 8.5 13.5 1 6" }),
+                    React.createElement('polyline', { key: 2, points: "17 18 23 18 23 12" })
+                ])
+            );
+
+            const Calculator = ({ className = "", size = 24 }) => (
+                React.createElement('svg', {
+                    className: className,
+                    width: size,
+                    height: size,
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    strokeWidth: "2",
+                    strokeLinecap: "round",
+                    strokeLinejoin: "round"
+                }, [
+                    React.createElement('rect', { key: 1, x: "4", y: "2", width: "16", height: "20", rx: "2" }),
+                    React.createElement('line', { key: 2, x1: "8", y1: "6", x2: "16", y2: "6" })
+                ])
+            );
+
+            const BarChart3 = ({ className = "", size = 24 }) => (
+                React.createElement('svg', {
+                    className: className,
+                    width: size,
+                    height: size,
+                    viewBox: "0 0 24 24",
+                    fill: "none",
+                    stroke: "currentColor",
+                    strokeWidth: "2",
+                    strokeLinecap: "round",
+                    strokeLinejoin: "round"
+                }, [
+                    React.createElement('path', { key: 1, d: "M3 3v18h18" }),
+                    React.createElement('path', { key: 2, d: "M18 17V9" }),
+                    React.createElement('path', { key: 3, d: "M13 17V5" }),
+                    React.createElement('path', { key: 4, d: "M8 17v-3" })
+                ])
+            );
+
+            // Chart Component using Chart.js
+            const LineChart = ({ data, visibleCurves, useLogScale, parameters, baseDate, connectActualData }) => {
+                const chartRef = useRef(null);
+                const chartInstance = useRef(null);
+
+                useEffect(() => {
+                    if (!chartRef.current || !data.length) return;
+
+                    // Destroy existing chart
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const ctx = chartRef.current.getContext('2d');
+
+                    // Prepare datasets
+                    const datasets = [];
+
+                    if (visibleCurves.exponential) {
+                        datasets.push({
+                            label: 'Exponential (b=0)',
+                            data: data.map(d => ({ x: d.time, y: Math.max(0, d.exponential) })),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.1
+                        });
+                    }
+
+                    if (visibleCurves.hyperbolic) {
+                        datasets.push({
+                            label: `Hyperbolic (b=${parameters.b})`,
+                            data: data.map(d => ({ x: d.time, y: Math.max(0, d.hyperbolic) })),
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.1
+                        });
+                    }
+
+                    if (visibleCurves.harmonic) {
+                        datasets.push({
+                            label: 'Harmonic (b=1)',
+                            data: data.map(d => ({ x: d.time, y: Math.max(0, d.harmonic) })),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.1
+                        });
+                    }
+
+                    if (visibleCurves.actual && data.some(d => d.actual !== undefined)) {
+                        datasets.push({
+                            label: 'Actual Data',
+                            data: data.filter(d => d.actual !== undefined).map(d => ({ x: d.time, y: Math.max(0, d.actual) })),
+                            borderColor: '#9333ea',
+                            backgroundColor: '#9333ea',
+                            borderWidth: 3,
+                            fill: false,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#9333ea',
+                            showLine: connectActualData,
+                            tension: 0.1
+                        });
+                    }
+
+                    // Create chart
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'line',
+                        data: { datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        title: function(context) {
+                                            const time = context[0].parsed.x;
+                                            if (baseDate) {
+                                                const targetDate = new Date(baseDate.getTime() + time * 30.44 * 24 * 60 * 60 * 1000);
+                                                return `Time: ${targetDate.toLocaleDateString("en-US", { year: "numeric", month: "short" })}`;
+                                            }
+                                            return `Time: ${time.toFixed(2)} ${parameters.timeUnit}`;
+                                        },
+                                        label: function(context) {
+                                            return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} ${parameters.productionUnit}`;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'linear',
+                                    position: 'bottom',
+                                    title: {
+                                        display: true,
+                                        text: baseDate ? 'Time' : `Time (${parameters.timeUnit})`
+                                    },
+                                    min: 0
+                                },
+                                y: {
+                                    type: useLogScale ? 'logarithmic' : 'linear',
+                                    title: {
+                                        display: true,
+                                        text: `Production Rate (${parameters.productionUnit})`
+                                    },
+                                    min: 0,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return Math.max(0, value).toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    return () => {
+                        if (chartInstance.current) {
+                            chartInstance.current.destroy();
+                        }
+                    };
+                }, [data, visibleCurves, useLogScale, parameters, baseDate, connectActualData]);
+
+                return React.createElement('div', { className: "chart-container" },
+                    React.createElement('canvas', { ref: chartRef })
+                );
+            };
+
+            // Main Application Component
+            const DeclineCurveAnalysis = () => {
+                const [parameters, setParameters] = useState({
+                    qi: 5618.57,
+                    di: 0.1,
+                    b: 0.5,
+                    timeUnit: "months",
+                    productionUnit: "bbl/day",
+                });
+
+                const [timeRange, setTimeRange] = useState(60);
+                const [data, setData] = useState([]);
+                const [actualData, setActualData] = useState([]);
+                const [dataInput, setDataInput] = useState("");
+                const [baseDate, setBaseDate] = useState(null);
+                const [message, setMessage] = useState("");
+
+                const [visibleCurves, setVisibleCurves] = useState({
+                    exponential: true,
+                    hyperbolic: true,
+                    harmonic: true,
+                    actual: true,
+                });
+
+                const [useLogScale, setUseLogScale] = useState(false);
+                const [connectActualData, setConnectActualData] = useState(false);
+
+                // Parse time values
+                const parseTimeValue = (timeStr) => {
+                    timeStr = timeStr.trim();
+
+                    if (!isNaN(Number(timeStr))) {
+                        return { time: Number(timeStr), date: null };
+                    }
+
+                    let parsedDate = null;
+
+                    const mmddyyyyMatch = timeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                    if (mmddyyyyMatch) {
+                        const month = parseInt(mmddyyyyMatch[1]) - 1;
+                        const day = parseInt(mmddyyyyMatch[2]);
+                        const year = parseInt(mmddyyyyMatch[3]);
+                        parsedDate = new Date(year, month, day);
+                    }
+
+                    if (!parsedDate) {
+                        parsedDate = new Date(timeStr);
+                        if (isNaN(parsedDate.getTime())) {
+                            parsedDate = null;
+                        }
+                    }
+
+                    if (parsedDate && !isNaN(parsedDate.getTime())) {
+                        return { time: 0, date: parsedDate };
+                    }
+
+                    return { time: 0, date: null };
+                };
+
+                // Calculate relative time
+                const calculateRelativeTime = (date, baseDate) => {
+                    const diffTime = date.getTime() - baseDate.getTime();
+
+                    switch (parameters.timeUnit) {
+                        case "days":
+                            return Math.max(0, diffTime / (1000 * 60 * 60 * 24));
+                        case "months":
+                            return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 30.44));
+                        case "years":
+                            return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 365.25));
+                        default:
+                            return Math.max(0, diffTime / (1000 * 60 * 60 * 24 * 30.44));
+                    }
+                };
+
+                // Calculate decline curves
+                useEffect(() => {
+                    const newData = [];
+
+                    let maxTime = timeRange;
+                    if (actualData.length > 0) {
+                        const maxActualTime = Math.max(...actualData.map((d) => d.time));
+                        maxTime = Math.max(timeRange, maxActualTime * 1.2);
+                    }
+
+                    const timeStep = maxTime / 200;
+
+                    for (let i = 0; i <= 200; i++) {
+                        const t = i * timeStep;
+
+                        const exponential = Math.max(0, parameters.qi * Math.exp(-parameters.di * t));
+                        const hyperbolic = Math.max(0, parameters.qi / Math.pow(1 + parameters.b * parameters.di * t, 1 / parameters.b));
+                        const harmonic = Math.max(0, parameters.qi / (1 + parameters.di * t));
+
+                        newData.push({
+                            time: t,
+                            exponential,
+                            hyperbolic,
+                            harmonic
+                        });
+                    }
+
+                    actualData.forEach((point) => {
+                        const existingIndex = newData.findIndex((d) => Math.abs(d.time - point.time) < 0.01);
+
+                        if (existingIndex !== -1) {
+                            newData[existingIndex].actual = Math.max(0, point.rate);
+                        } else {
+                            const insertIndex = newData.findIndex((d) => d.time > point.time);
+                            const newPoint = {
+                                time: point.time,
+                                exponential: Math.max(0, parameters.qi * Math.exp(-parameters.di * point.time)),
+                                hyperbolic: Math.max(0, parameters.qi / Math.pow(1 + parameters.b * parameters.di * point.time, 1 / parameters.b)),
+                                harmonic: Math.max(0, parameters.qi / (1 + parameters.di * point.time)),
+                                actual: Math.max(0, point.rate)
+                            };
+
+                            if (insertIndex === -1) {
+                                newData.push(newPoint);
+                            } else {
+                                newData.splice(insertIndex, 0, newPoint);
+                            }
+                        }
+                    });
+
+                    newData.sort((a, b) => a.time - b.time);
+                    setData(newData);
+                }, [parameters, timeRange, actualData]);
+
+                // Calculate cumulative production
+                const calculateCumulative = (model) => {
+                    const { qi, di, b } = parameters;
+                    const t = timeRange;
+
+                    switch (model) {
+                        case "exponential":
+                            return Math.max(0, (qi / di) * (1 - Math.exp(-di * t)));
+                        case "hyperbolic":
+                            if (b === 1) {
+                                return Math.max(0, (qi / di) * Math.log(1 + di * t));
+                            } else {
+                                return Math.max(0, (qi / ((1 - b) * di)) * (1 - Math.pow(1 + b * di * t, (1 - b) / b)));
+                            }
+                        case "harmonic":
+                            return Math.max(0, (qi / di) * Math.log(1 + di * t));
+                        default:
+                            return 0;
+                    }
+                };
+
+                // Calculate EUR
+                const calculateEUR = (model) => {
+                    const { qi, di, b } = parameters;
+
+                    switch (model) {
+                        case "exponential":
+                            return Math.max(0, qi / di);
+                        case "hyperbolic":
+                            if (b >= 1) return Number.POSITIVE_INFINITY;
+                            return Math.max(0, qi / ((1 - b) * di));
+                        case "harmonic":
+                            return Number.POSITIVE_INFINITY;
+                        default:
+                            return 0;
+                    }
+                };
+
+                const handleDataImport = () => {
+                    try {
+                        const lines = dataInput
+                            .trim()
+                            .split("\n")
+                            .filter((line) => line.trim());
+
+                        if (lines.length === 0) {
+                            throw new Error("No data found");
+                        }
+
+                        const parsedData = [];
+                        let firstDate = null;
+
+                        for (const line of lines) {
+                            const parts = line.split(/[,\t\s]+/).filter((part) => part.trim());
+
+                            if (parts.length < 2) {
+                                continue;
+                            }
+
+                            const timeStr = parts[0].trim();
+                            const rateStr = parts[1].trim();
+
+                            const { time: tempTime, date } = parseTimeValue(timeStr);
+                            const rate = parseFloat(rateStr);
+
+                            if (isNaN(rate) || rate < 0) {
+                                continue;
+                            }
+
+                            if (date && !firstDate) {
+                                firstDate = date;
+                                setBaseDate(date);
+                            }
+
+                            parsedData.push({
+                                time: tempTime,
+                                rate: Math.max(0, rate),
+                                originalTime: timeStr,
+                                date,
+                            });
+                        }
+
+                        if (firstDate) {
+                            parsedData.forEach((point) => {
+                                if (point.date) {
+                                    point.time = calculateRelativeTime(point.date, firstDate);
+                                }
+                            });
+                        }
+
+                        if (parsedData.length === 0) {
+                            throw new Error("No valid data found");
+                        }
+
+                        parsedData.sort((a, b) => a.time - b.time);
+
+                        setActualData(parsedData);
+                        setVisibleCurves((prev) => ({ ...prev, actual: true }));
+
+                        if (parsedData.length > 0) {
+                            setParameters((prev) => ({
+                                ...prev,
+                                qi: Math.max(0, parsedData[0].rate),
+                            }));
+                        }
+
+                        const maxTime = Math.max(...parsedData.map((d) => d.time));
+                        if (maxTime > timeRange) {
+                            setTimeRange(Math.ceil(maxTime * 1.2));
+                        }
+
+                        setMessage(`Successfully imported ${parsedData.length} data points!`);
+                        setTimeout(() => setMessage(""), 3000);
+                    } catch (error) {
+                        setMessage("Error importing data. Please check the format (time,rate).");
+                        setTimeout(() => setMessage(""), 5000);
+                        console.error(error);
+                    }
+                };
+
+                const handleParameterChange = (key, value) => {
+                    setParameters((prev) => ({
+                        ...prev,
+                        [key]:
+                            typeof value === "string"
+                                ? key === "timeUnit" || key === "productionUnit"
+                                    ? value
+                                    : Math.max(0, parseFloat(value) || 0)
+                                : Math.max(0, value),
+                    }));
+                };
+
+                const getDeclineType = (b) => {
+                    if (b === 0) return "Exponential";
+                    if (b > 0 && b < 1) return "Hyperbolic";
+                    if (b === 1) return "Harmonic";
+                    return "Invalid (b > 1)";
+                };
+
+                return React.createElement('div', { 
+                    className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4" 
+                }, [
+                    React.createElement('div', { 
+                        key: 'main',
+                        className: "max-w-7xl mx-auto space-y-4 sm:space-y-6" 
+                    }, [
+                        // Header
+                        React.createElement('div', { 
+                            key: 'header',
+                            className: "text-center space-y-2" 
+                        }, [
+                            React.createElement('h1', { 
+                                key: 'title',
+                                className: "text-2xl sm:text-4xl font-bold text-gray-900 flex items-center justify-center gap-2" 
+                            }, [
+                                React.createElement(TrendingDown, { 
+                                    key: 'icon',
+                                    className: "h-6 w-6 sm:h-8 sm:w-8 text-blue-600", 
+                                    size: 32 
+                                }),
+                                "Decline Curve Analysis"
+                            ]),
+                            React.createElement('p', { 
+                                key: 'subtitle',
+                                className: "text-sm sm:text-lg text-gray-600" 
+                            }, "Petroleum Engineering Production Forecasting Tool")
+                        ]),
+
+                        // Message display
+                        message && React.createElement('div', {
+                            key: 'message',
+                            className: message.includes('Error') ? 'error' : 'success'
+                        }, message),
+
+                        React.createElement('div', { 
+                            key: 'content',
+                            className: "grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6" 
+                        }, [
+                            // Input Parameters
+                            React.createElement(Card, { 
+                                key: 'params',
+                                className: "lg:col-span-1" 
+                            }, [
+                                React.createElement(CardHeader, { 
+                                    key: 'header',
+                                    className: "pb-3 sm:pb-6" 
+                                }, [
+                                    React.createElement(CardTitle, { 
+                                        key: 'title',
+                                        className: "flex items-center gap-2 text-sm sm:text-base" 
+                                    }, [
+                                        React.createElement(Calculator, { 
+                                            key: 'icon',
+                                            className: "h-4 w-4 sm:h-5 sm:w-5", 
+                                            size: 20 
+                                        }),
+                                        "Input Parameters"
+                                    ]),
+                                    React.createElement(CardDescription, { 
+                                        key: 'desc',
+                                        className: "text-xs sm:text-sm" 
+                                    }, "Configure the decline curve parameters")
+                                ]),
+                                React.createElement(CardContent, { 
+                                    key: 'content',
+                                    className: "space-y-3 sm:space-y-4" 
+                                }, [
+                                    React.createElement('div', { 
+                                        key: 'qi',
+                                        className: "space-y-2" 
+                                    }, [
+                                        React.createElement(Label, { 
+                                            key: 'label',
+                                            htmlFor: "qi", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Initial Production Rate (qi)"),
+                                        React.createElement(Input, {
+                                            key: 'input',
+                                            id: "qi",
+                                            type: "number",
+                                            min: "0",
+                                            value: parameters.qi,
+                                            onChange: (e) => handleParameterChange("qi", e.target.value),
+                                            placeholder: "5618.57",
+                                            className: "text-xs sm:text-sm"
+                                        })
+                                    ]),
+                                    React.createElement('div', { 
+                                        key: 'di',
+                                        className: "space-y-2" 
+                                    }, [
+                                        React.createElement(Label, { 
+                                            key: 'label',
+                                            htmlFor: "di", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Initial Decline Rate (di)"),
+                                        React.createElement(Input, {
+                                            key: 'input',
+                                            id: "di",
+                                            type: "number",
+                                            min: "0",
+                                            step: "0.001",
+                                            value: parameters.di,
+                                            onChange: (e) => handleParameterChange("di", e.target.value),
+                                            placeholder: "0.1",
+                                            className: "text-xs sm:text-sm"
+                                        })
+                                    ]),
+                                    React.createElement('div', { 
+                                        key: 'b',
+                                        className: "space-y-2" 
+                                    }, [
+                                        React.createElement(Label, { 
+                                            key: 'label',
+                                            htmlFor: "b", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Decline Exponent (b)"),
+                                        React.createElement(Input, {
+                                            key: 'input',
+                                            id: "b",
+                                            type: "number",
+                                            min: "0",
+                                            step: "0.1",
+                                            value: parameters.b,
+                                            onChange: (e) => handleParameterChange("b", e.target.value),
+                                            placeholder: "0.5",
+                                            className: "text-xs sm:text-sm"
+                                        }),
+                                        React.createElement(Badge, { 
+                                            key: 'badge',
+                                            variant: "outline", 
+                                            className: "text-xs" 
+                                        }, getDeclineType(parameters.b))
+                                    ]),
+                                    React.createElement('div', { 
+                                        key: 'timeRange',
+                                        className: "space-y-2" 
+                                    }, [
+                                        React.createElement(Label, { 
+                                            key: 'label',
+                                            htmlFor: "timeRange", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Time Range"),
+                                        React.createElement(Input, {
+                                            key: 'input',
+                                            id: "timeRange",
+                                            type: "number",
+                                            min: "1",
+                                            value: timeRange,
+                                            onChange: (e) => setTimeRange(Math.max(1, parseInt(e.target.value) || 60)),
+                                            placeholder: "60",
+                                            className: "text-xs sm:text-sm"
+                                        })
+                                    ])
+                                ])
+                            ]),
+
+                            // Data Input
+                            React.createElement(Card, { 
+                                key: 'data',
+                                className: "lg:col-span-1" 
+                            }, [
+                                React.createElement(CardHeader, { 
+                                    key: 'header',
+                                    className: "pb-3 sm:pb-6" 
+                                }, [
+                                    React.createElement(CardTitle, { 
+                                        key: 'title',
+                                        className: "flex items-center gap-2 text-sm sm:text-base" 
+                                    }, [
+                                        React.createElement(BarChart3, { 
+                                            key: 'icon',
+                                            className: "h-4 w-4 sm:h-5 sm:w-5", 
+                                            size: 20 
+                                        }),
+                                        "Production Data"
+                                    ]),
+                                    React.createElement(CardDescription, { 
+                                        key: 'desc',
+                                        className: "text-xs sm:text-sm" 
+                                    }, "Import your actual production data")
+                                ]),
+                                React.createElement(CardContent, { 
+                                    key: 'content',
+                                    className: "space-y-3 sm:space-y-4" 
+                                }, [
+                                    React.createElement('div', { 
+                                        key: 'input',
+                                        className: "space-y-2" 
+                                    }, [
+                                        React.createElement(Label, { 
+                                            key: 'label',
+                                            htmlFor: "dataInput", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Paste Data (time,rate format)"),
+                                        React.createElement('textarea', {
+                                            key: 'textarea',
+                                            id: "dataInput",
+                                            className: "w-full min-h-[80px] sm:min-h-[120px] p-2 border border-gray-300 rounded-md font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            placeholder: "4/7/2011,5618.57\n5/11/2011,5540.51\n6/13/2011,5077.47\nor\n0,1000\n1,950\n2,903",
+                                            value: dataInput,
+                                            onChange: (e) => setDataInput(e.target.value)
+                                        }),
+                                        React.createElement('div', { 
+                                            key: 'help',
+                                            className: "text-xs text-gray-500" 
+                                        }, "Supports: MM/DD/YYYY,rate or time,rate format")
+                                    ]),
+                                    React.createElement('div', { 
+                                        key: 'units',
+                                        className: "grid grid-cols-2 gap-2" 
+                                    }, [
+                                        React.createElement('div', { 
+                                            key: 'timeUnit',
+                                            className: "space-y-2" 
+                                        }, [
+                                            React.createElement(Label, { 
+                                                key: 'label',
+                                                className: "text-xs sm:text-sm" 
+                                            }, "Time Unit"),
+                                            React.createElement(Select, {
+                                                key: 'select',
+                                                value: parameters.timeUnit,
+                                                onValueChange: (value) => handleParameterChange("timeUnit", value)
+                                            }, [
+                                                React.createElement(SelectItem, { key: 'days', value: "days" }, "Days"),
+                                                React.createElement(SelectItem, { key: 'months', value: "months" }, "Months"),
+                                                React.createElement(SelectItem, { key: 'years', value: "years" }, "Years")
+                                            ])
+                                        ]),
+                                        React.createElement('div', { 
+                                            key: 'prodUnit',
+                                            className: "space-y-2" 
+                                        }, [
+                                            React.createElement(Label, { 
+                                                key: 'label',
+                                                className: "text-xs sm:text-sm" 
+                                            }, "Production Unit"),
+                                            React.createElement(Select, {
+                                                key: 'select',
+                                                value: parameters.productionUnit,
+                                                onValueChange: (value) => handleParameterChange("productionUnit", value)
+                                            }, [
+                                                React.createElement(SelectItem, { key: 'bbl', value: "bbl/day" }, "bbl/day"),
+                                                React.createElement(SelectItem, { key: 'mcf', value: "Mcf/day" }, "Mcf/day"),
+                                                React.createElement(SelectItem, { key: 'm3', value: "m³/day" }, "m³/day")
+                                            ])
+                                        ])
+                                    ]),
+                                    React.createElement(Button, {
+                                        key: 'import',
+                                        onClick: handleDataImport,
+                                        className: "w-full text-xs sm:text-sm"
+                                    }, "Import Data"),
+                                    actualData.length > 0 && React.createElement('div', { 
+                                        key: 'imported',
+                                        className: "mt-4" 
+                                    }, [
+                                        React.createElement('div', { 
+                                            key: 'count',
+                                            className: "text-xs sm:text-sm font-medium" 
+                                        }, `Imported ${actualData.length} data points`),
+                                        React.createElement('div', { 
+                                            key: 'table',
+                                            className: "max-h-[100px] sm:max-h-[150px] overflow-y-auto mt-2 custom-scrollbar" 
+                                        }, React.createElement('table', { 
+                                            key: 'table',
+                                            className: "w-full text-xs" 
+                                        }, [
+                                            React.createElement('thead', { key: 'thead' }, 
+                                                React.createElement('tr', { key: 'tr', className: "border-b" }, [
+                                                    React.createElement('th', { key: 'time', className: "text-left p-1" }, "Time"),
+                                                    React.createElement('th', { key: 'rate', className: "text-left p-1" }, "Rate")
+                                                ])
+                                            ),
+                                            React.createElement('tbody', { key: 'tbody' }, [
+                                                ...actualData.slice(0, 10).map((point, i) =>
+                                                    React.createElement('tr', { key: i, className: "border-b border-gray-100" }, [
+                                                        React.createElement('td', { key: 'time', className: "p-1" }, point.originalTime || point.time.toFixed(2)),
+                                                        React.createElement('td', { key: 'rate', className: "p-1" }, point.rate.toFixed(2))
+                                                    ])
+                                                ),
+                                                actualData.length > 10 && React.createElement('tr', { key: 'more' },
+                                                    React.createElement('td', { key: 'td', colSpan: 2, className: "text-center p-1 text-gray-500" }, 
+                                                        `+ ${actualData.length - 10} more points`
+                                                    )
+                                                )
+                                            ])
+                                        ]))
+                                    ])
+                                ])
+                            ]),
+
+                            // Chart Display Controls
+                            React.createElement(Card, { 
+                                key: 'controls',
+                                className: "lg:col-span-1" 
+                            }, [
+                                React.createElement(CardHeader, { 
+                                    key: 'header',
+                                    className: "pb-3 sm:pb-6" 
+                                }, [
+                                    React.createElement(CardTitle, { 
+                                        key: 'title',
+                                        className: "flex items-center gap-2 text-sm sm:text-base" 
+                                    }, [
+                                        React.createElement(BarChart3, { 
+                                            key: 'icon',
+                                            className: "h-4 w-4 sm:h-5 sm:w-5", 
+                                            size: 20 
+                                        }),
+                                        "Chart Display"
+                                    ]),
+                                    React.createElement(CardDescription, { 
+                                        key: 'desc',
+                                        className: "text-xs sm:text-sm" 
+                                    }, "Control chart appearance")
+                                ]),
+                                React.createElement(CardContent, { 
+                                    key: 'content',
+                                    className: "space-y-3 sm:space-y-4" 
+                                }, [
+                                    React.createElement('div', { key: 'curves' }, [
+                                        React.createElement('h4', { 
+                                            key: 'title',
+                                            className: "text-xs sm:text-sm font-medium mb-2" 
+                                        }, "Visible Curves"),
+                                        React.createElement('div', { 
+                                            key: 'grid',
+                                            className: "grid grid-cols-2 gap-2" 
+                                        }, [
+                                            React.createElement('div', { 
+                                                key: 'exp',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "show-exponential",
+                                                    checked: visibleCurves.exponential,
+                                                    onCheckedChange: (checked) => setVisibleCurves((prev) => ({ ...prev, exponential: !!checked }))
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "show-exponential", 
+                                                    className: "text-xs sm:text-sm text-red-600" 
+                                                }, "Exponential")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'hyp',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "show-hyperbolic",
+                                                    checked: visibleCurves.hyperbolic,
+                                                    onCheckedChange: (checked) => setVisibleCurves((prev) => ({ ...prev, hyperbolic: !!checked }))
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "show-hyperbolic", 
+                                                    className: "text-xs sm:text-sm text-blue-600" 
+                                                }, "Hyperbolic")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'harm',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "show-harmonic",
+                                                    checked: visibleCurves.harmonic,
+                                                    onCheckedChange: (checked) => setVisibleCurves((prev) => ({ ...prev, harmonic: !!checked }))
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "show-harmonic", 
+                                                    className: "text-xs sm:text-sm text-green-600" 
+                                                }, "Harmonic")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'actual',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "show-actual",
+                                                    checked: visibleCurves.actual,
+                                                    onCheckedChange: (checked) => setVisibleCurves((prev) => ({ ...prev, actual: !!checked })),
+                                                    disabled: actualData.length === 0
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "show-actual", 
+                                                    className: `text-xs sm:text-sm ${actualData.length === 0 ? "text-gray-400" : "text-purple-600"}` 
+                                                }, "Actual Data")
+                                            ])
+                                        ])
+                                    ]),
+                                    React.createElement('div', { key: 'options' }, [
+                                        React.createElement('h4', { 
+                                            key: 'title',
+                                            className: "text-xs sm:text-sm font-medium mb-2" 
+                                        }, "Chart Options"),
+                                        React.createElement('div', { 
+                                            key: 'checkboxes',
+                                            className: "space-y-2" 
+                                        }, [
+                                            React.createElement('div', { 
+                                                key: 'log',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "use-log-scale",
+                                                    checked: useLogScale,
+                                                    onCheckedChange: (checked) => setUseLogScale(!!checked)
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "use-log-scale", 
+                                                    className: "text-xs sm:text-sm" 
+                                                }, "Logarithmic scale")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'connect',
+                                                className: "flex items-center space-x-2" 
+                                            }, [
+                                                React.createElement(Checkbox, {
+                                                    key: 'checkbox',
+                                                    id: "connect-actual-data",
+                                                    checked: connectActualData,
+                                                    onCheckedChange: (checked) => setConnectActualData(!!checked),
+                                                    disabled: actualData.length === 0
+                                                }),
+                                                React.createElement(Label, { 
+                                                    key: 'label',
+                                                    htmlFor: "connect-actual-data", 
+                                                    className: `text-xs sm:text-sm ${actualData.length === 0 ? "text-gray-400" : ""}` 
+                                                }, "Connect actual data")
+                                            ])
+                                        ])
+                                    ])
+                                ])
+                            ]),
+
+                            // Chart and Results
+                            React.createElement('div', { 
+                                key: 'results',
+                                className: "lg:col-span-3 space-y-4 sm:space-y-6" 
+                            }, [
+                                // Chart
+                                React.createElement(Card, { key: 'chart' }, [
+                                    React.createElement(CardHeader, { 
+                                        key: 'header',
+                                        className: "pb-3 sm:pb-6" 
+                                    }, [
+                                        React.createElement(CardTitle, { 
+                                            key: 'title',
+                                            className: "flex items-center gap-2 text-sm sm:text-base" 
+                                        }, [
+                                            React.createElement(BarChart3, { 
+                                                key: 'icon',
+                                                className: "h-4 w-4 sm:h-5 sm:w-5", 
+                                                size: 20 
+                                            }),
+                                            "Production Decline Curves"
+                                        ]),
+                                        React.createElement(CardDescription, { 
+                                            key: 'desc',
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Visualization of decline curve models and actual data")
+                                    ]),
+                                    React.createElement(CardContent, { key: 'content' },
+                                        React.createElement(LineChart, {
+                                            key: 'chart',
+                                            data: data,
+                                            visibleCurves: visibleCurves,
+                                            useLogScale: useLogScale,
+                                            parameters: parameters,
+                                            baseDate: baseDate,
+                                            connectActualData: connectActualData
+                                        })
+                                    )
+                                ]),
+
+                                // Results Tabs
+                                React.createElement(Tabs, { 
+                                    key: 'tabs',
+                                    defaultValue: "summary", 
+                                    className: "w-full" 
+                                }, [
+                                    React.createElement(TabsList, { key: 'list' }, [
+                                        React.createElement(TabsTrigger, { 
+                                            key: 'summary',
+                                            value: "summary", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Summary"),
+                                        React.createElement(TabsTrigger, { 
+                                            key: 'cumulative',
+                                            value: "cumulative", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Cumulative"),
+                                        React.createElement(TabsTrigger, { 
+                                            key: 'equations',
+                                            value: "equations", 
+                                            className: "text-xs sm:text-sm" 
+                                        }, "Equations")
+                                    ]),
+
+                                    React.createElement(TabsContent, { 
+                                        key: 'summary',
+                                        value: "summary" 
+                                    }, React.createElement('div', { 
+                                        className: "grid grid-cols-1 md:grid-cols-3 gap-4" 
+                                    }, [
+                                        React.createElement(Card, { key: 'exp' }, [
+                                            React.createElement(CardHeader, { 
+                                                key: 'header',
+                                                className: "pb-2" 
+                                            }, React.createElement(CardTitle, { 
+                                                className: "text-xs sm:text-sm text-red-600" 
+                                            }, "Exponential")),
+                                            React.createElement(CardContent, { key: 'content' }, 
+                                                React.createElement('div', { 
+                                                    className: "space-y-2 text-xs sm:text-sm" 
+                                                }, [
+                                                    React.createElement('div', { key: 'eur' }, `EUR: ${calculateEUR("exponential").toLocaleString()} bbl`),
+                                                    React.createElement('div', { key: 'cum' }, `Cum @ ${timeRange} ${parameters.timeUnit}: ${calculateCumulative("exponential").toLocaleString()} bbl`),
+                                                    React.createElement('div', { key: 'rate' }, `Rate @ ${timeRange} ${parameters.timeUnit}: ${data[data.length - 1]?.exponential?.toFixed(2) || 0} ${parameters.productionUnit}`)
+                                                ])
+                                            )
+                                        ]),
+                                        React.createElement(Card, { key: 'hyp' }, [
+                                            React.createElement(CardHeader, { 
+                                                key: 'header',
+                                                className: "pb-2" 
+                                            }, React.createElement(CardTitle, { 
+                                                className: "text-xs sm:text-sm text-blue-600" 
+                                            }, "Hyperbolic")),
+                                            React.createElement(CardContent, { key: 'content' }, 
+                                                React.createElement('div', { 
+                                                    className: "space-y-2 text-xs sm:text-sm" 
+                                                }, [
+                                                    React.createElement('div', { key: 'eur' }, `EUR: ${calculateEUR("hyperbolic") === Number.POSITIVE_INFINITY ? "∞" : calculateEUR("hyperbolic").toLocaleString()} bbl`),
+                                                    React.createElement('div', { key: 'cum' }, `Cum @ ${timeRange} ${parameters.timeUnit}: ${calculateCumulative("hyperbolic").toLocaleString()} bbl`),
+                                                    React.createElement('div', { key: 'rate' }, `Rate @ ${timeRange} ${parameters.timeUnit}: ${data[data.length - 1]?.hyperbolic?.toFixed(2) || 0} ${parameters.productionUnit}`)
+                                                ])
+                                            )
+                                        ]),
+                                        React.createElement(Card, { key: 'harm' }, [
+                                            React.createElement(CardHeader, { 
+                                                key: 'header',
+                                                className: "pb-2" 
+                                            }, React.createElement(CardTitle, { 
+                                                className: "text-xs sm:text-sm text-green-600" 
+                                            }, "Harmonic")),
+                                            React.createElement(CardContent, { key: 'content' }, 
+                                                React.createElement('div', { 
+                                                    className: "space-y-2 text-xs sm:text-sm" 
+                                                }, [
+                                                    React.createElement('div', { key: 'eur' }, "EUR: ∞ bbl"),
+                                                    React.createElement('div', { key: 'cum' }, `Cum @ ${timeRange} ${parameters.timeUnit}: ${calculateCumulative("harmonic").toLocaleString()} bbl`),
+                                                    React.createElement('div', { key: 'rate' }, `Rate @ ${timeRange} ${parameters.timeUnit}: ${data[data.length - 1]?.harmonic?.toFixed(2) || 0} ${parameters.productionUnit}`)
+                                                ])
+                                            )
+                                        ])
+                                    ])),
+
+                                    React.createElement(TabsContent, { 
+                                        key: 'cumulative',
+                                        value: "cumulative" 
+                                    }, React.createElement(Card, {}, [
+                                        React.createElement(CardHeader, { key: 'header' }, 
+                                            React.createElement(CardTitle, { 
+                                                className: "text-sm sm:text-base" 
+                                            }, "Cumulative Production Formulas")
+                                        ),
+                                        React.createElement(CardContent, { 
+                                            key: 'content',
+                                            className: "space-y-4" 
+                                        }, [
+                                            React.createElement('div', { 
+                                                key: 'exp',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-red-600 text-xs sm:text-sm" 
+                                                }, "Exponential Decline:"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "Np(t) = (qi / di) × [1 - exp(-di × t)]")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'hyp',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-blue-600 text-xs sm:text-sm" 
+                                                }, "Hyperbolic Decline:"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "Np(t) = qi / [(1-b) × di] × [1 - (1 + b × di × t)^((1-b)/b)]")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'harm',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-green-600 text-xs sm:text-sm" 
+                                                }, "Harmonic Decline:"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "Np(t) = (qi / di) × ln(1 + di × t)")
+                                            ])
+                                        ])
+                                    ])),
+
+                                    React.createElement(TabsContent, { 
+                                        key: 'equations',
+                                        value: "equations" 
+                                    }, React.createElement(Card, {}, [
+                                        React.createElement(CardHeader, { key: 'header' }, 
+                                            React.createElement(CardTitle, { 
+                                                className: "text-sm sm:text-base" 
+                                            }, "Decline Curve Equations")
+                                        ),
+                                        React.createElement(CardContent, { 
+                                            key: 'content',
+                                            className: "space-y-4" 
+                                        }, [
+                                            React.createElement('div', { 
+                                                key: 'exp',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-red-600 text-xs sm:text-sm" 
+                                                }, "Exponential Decline (b = 0):"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "q(t) = qi × exp(-di × t)")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'hyp',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-blue-600 text-xs sm:text-sm" 
+                                                }, "Hyperbolic Decline (0 < b < 1):"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "q(t) = qi / (1 + b × di × t)^(1/b)")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'harm',
+                                                className: "space-y-2" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-green-600 text-xs sm:text-sm" 
+                                                }, "Harmonic Decline (b = 1):"),
+                                                React.createElement('p', { 
+                                                    className: "text-xs sm:text-sm font-mono bg-gray-100 p-2 rounded" 
+                                                }, "q(t) = qi / (1 + di × t)")
+                                            ]),
+                                            React.createElement('div', { 
+                                                key: 'legend',
+                                                className: "mt-4 p-3 sm:p-4 bg-blue-50 rounded-lg" 
+                                            }, [
+                                                React.createElement('h4', { 
+                                                    className: "font-semibold text-blue-800 mb-2 text-xs sm:text-sm" 
+                                                }, "Where:"),
+                                                React.createElement('ul', { 
+                                                    className: "text-xs sm:text-sm space-y-1 text-blue-700" 
+                                                }, [
+                                                    React.createElement('li', { key: 'qi' }, "• qi = Initial production rate"),
+                                                    React.createElement('li', { key: 'di' }, "• di = Initial decline rate"),
+                                                    React.createElement('li', { key: 'b' }, "• b = Decline exponent"),
+                                                    React.createElement('li', { key: 't' }, "• t = Time"),
+                                                    React.createElement('li', { key: 'qt' }, "• q(t) = Production rate at time t")
+                                                ])
+                                            ])
+                                        ])
+                                    ]))
+                                ])
+                            ])
+                        ])
+                    ])
+                ]);
+            };
+
+            // Hide loading and render the application
+            try {
+                document.getElementById('loading').style.display = 'none';
+                ReactDOM.render(React.createElement(DeclineCurveAnalysis), document.getElementById("root"));
+            } catch (error) {
+                console.error('Failed to render application:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').innerHTML = `
+                    <div class="error">
+                        <h2>Failed to Load Application</h2>
+                        <p>There was an error loading the Decline Curve Analysis tool.</p>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>Please refresh the page and try again.</p>
+                        <button onclick="location.reload()" style="background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                            Refresh Page
+                        </button>
+                    </div>
+                `;
+            }
+        });
     </script>
 </body>
 </html>
