@@ -34,4 +34,4 @@ To make changes to the tool:
 
 ## License
 
-MIT License
+Daniel-Shafeizade@gmail.com
